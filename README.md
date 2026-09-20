@@ -1,0 +1,239 @@
+# Weekly Financial Market Monitor
+
+A config-driven weekly market calendar. Every Sunday at 10:00 it collects
+the macro releases scheduled for the coming week and the earnings dates
+for a watchlist, and puts both on one dashboard.
+
+The split it is built around:
+
+- **Official sources** decide *when an event happens.*
+- **`config/config.yaml`** decides *whether you care and how much.*
+- **The dashboard** decides *how it looks.*
+
+It is a monitoring and planning tool. It does not place trades.
+
+## Where the data comes from
+
+All free, all official, no scraping of commercial sites:
+
+| Source | Feed | Covers |
+| --- | --- | --- |
+| BLS | official iCalendar feed | CPI, PPI, Employment Situation, JOLTS, ECI |
+| BEA | official iCalendar feed | GDP, Personal Income and Outlays (PCE) |
+| Federal Reserve | FOMC calendar page | Rate decisions, statements, minutes |
+| Census | economic indicator calendar | Retail Sales, Durable Goods, Housing Starts |
+| Alpha Vantage | earnings calendar CSV | Earnings dates for your watchlist |
+
+BLS and BEA publish real calendar feeds, so those two need no HTML
+parsing at all. The Fed and Census pages are parsed, but against stable
+anchors — the Fed's `fomc-meeting` CSS classes and the Census table's
+`sorttable_customkey` timestamps — rather than positional selectors.
+
+TradingView is never scraped. Its official Economic Calendar widget can
+be embedded in the dashboard as a visual cross-check, and that is all it
+is: your table is generated from the agencies.
+
+## Setup
+
+Python 3.9 or newer.
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/pip install -e .
+
+cp .env.example .env
+```
+
+Then edit `.env`:
+
+```bash
+# Required in practice: BLS returns 403 to clients that do not identify
+# a contact address.
+CONTACT_EMAIL=you@example.com
+
+# Optional. The literal "demo" works for the earnings calendar; a free
+# key from alphavantage.co/support/#api-key raises your daily limit.
+ALPHA_VANTAGE_API_KEY=
+```
+
+`.env` holds every secret. No API key belongs in the YAML.
+
+## Use
+
+```bash
+python -m market_monitor validate-config    # check config.yaml, print a summary
+python -m market_monitor refresh            # run the full pipeline once
+python -m market_monitor fetch-macro        # macro calendar only
+python -m market_monitor fetch-earnings     # earnings watchlist only
+python -m market_monitor summary            # text summary of the last run
+python -m market_monitor dashboard          # launch Streamlit
+python -m market_monitor schedule           # run the weekly scheduler
+```
+
+`schedule --run-now` does one refresh immediately, then waits for the
+next scheduled slot. `refresh` exits non-zero when the report carries
+warnings, so cron and CI can notice a degraded run.
+
+Everything works without the scheduler; the scheduler just calls
+`refresh` on a cron trigger built from the YAML.
+
+## Configuration
+
+`config/config.yaml` owns all of it. Changing any of the following needs
+no Python edit:
+
+```yaml
+schedule:
+  day_of_week: "sunday"     # when it runs
+  time: "10:00"
+
+app:
+  timezone: "America/Toronto"
+
+macro:
+  days_ahead: 7             # 7 = the Mon..Sun week ahead
+  minimum_importance: 3     # hide anything below this
+  providers:                # turn individual sources off
+    census: true
+  events:
+    CPI:
+      enabled: true
+      importance: 5         # your rating, not anyone else's
+      aliases:
+        - "Consumer Price Index"
+
+earnings:
+  symbols: ["NVDA", "MU", "AMD", "MSFT"]
+  lookahead_days: 30
+```
+
+Importance is 5 (Critical) down to 1 (Low), and it is *your* number. The
+shipped values are a starting point, not a claim about the market.
+
+Tickers are normalized for you, so `nvda`, ` MU `, and `Msft` all work.
+
+### How an event gets matched
+
+Agencies do not use your labels. BEA publishes
+`"Gross Domestic Product, 2nd Quarter 2026 (Second Estimate)"`, and you
+want to call it `GDP`. Matching is exact, retried against progressively
+simplified forms of the title:
+
+```
+"Gross Domestic Product, 2nd Quarter 2026 (Second Estimate)"
+  -> strip the parenthetical   -> no match
+  -> cut at the first comma    -> "Gross Domestic Product" -> GDP
+```
+
+Exact matching is deliberate. BEA also publishes *"Gross Domestic Product
+by State and Personal Income by State"*; a substring rule would quietly
+file that regional release as the headline GDP print. Anything no alias
+claims is simply left out.
+
+To add a release, add its published title as an alias. To see what is
+being skipped, the `MacroService.unmatched_names()` helper lists the
+titles nothing claimed.
+
+### Configured events with no provider yet
+
+A few entries in the shipped config will never produce a row, and that is
+expected:
+
+- **Core CPI, Core PPI, Core PCE, Unemployment Rate** — no agency
+  publishes these separately. They ship inside the CPI, PPI, Personal
+  Income and Outlays, and Employment Situation releases, which do appear.
+- **ISM Manufacturing / Services PMI, Consumer Confidence, University of
+  Michigan Sentiment** — these are commercial products with no free
+  machine-readable calendar.
+- **Initial Jobless Claims** — published by the Department of Labor,
+  which has no provider here yet.
+
+They stay in the config so that adding a provider later is a config
+change rather than a code change.
+
+## Behaviour when something breaks
+
+The Sunday run is unattended, so failure handling is part of the design,
+not an afterthought.
+
+- **Retries.** Each HTTP source gets 3 attempts with exponential backoff
+  (2s, 4s), all configurable under `network:`.
+- **Isolation.** One source failing never fails the report. If BLS is
+  down, BEA, the Fed, Census and earnings still populate the dashboard.
+- **Last known good.** A failed fetch falls back to that provider's most
+  recent successful snapshot, and the dashboard says so, with the time
+  the data was captured. A failure never overwrites the cache.
+- **Cache reach.** Snapshots are stored for ~120 days past the reported
+  window, so next week's fallback has rows next week's window can see.
+- **Conflicts.** Two sources giving the same release different times are
+  both kept, and a warning is raised. Nothing is silently dropped.
+
+Provider health, last success time and any warnings are all on the
+dashboard, and `refresh_runs` in SQLite keeps a log of every run.
+
+## Earnings dates are projections
+
+Alpha Vantage publishes no confirmation flag, so this app never marks a
+date `confirmed`. A row that names a session is `expected`; one without
+is `estimated`. The dashboard says how many are unconfirmed. Treat them
+as dates that can move.
+
+## Output
+
+- **SQLite** (`data/market_monitor.db`) — snapshots, reports, run log.
+- **JSON** (`output/current_report.json`) — the full `WeeklyReport`,
+  ready for a React frontend, a Discord bot, Grafana or anything else.
+- **Dashboard** — Streamlit, reading the stored report.
+
+## Layout
+
+```
+src/market_monitor/
+  config.py            YAML schema + validation
+  main.py              wiring and the refresh pipeline
+  cli.py               command line
+  scheduler.py         APScheduler cron job
+  models/              MacroEvent, EarningsEvent, WeeklyReport, ProviderStatus
+  providers/macro/     bls, bea, federal_reserve, census, composite
+  providers/earnings/  alphavantage
+  services/            normalizer, macro, earnings, report
+  repository/          SQLite persistence
+  dashboard/           Streamlit app and sections
+  notifications/       discord, email
+  utils/               dates, ics, http, retry, logging
+```
+
+The dashboard consumes `WeeklyReport` and nothing else — it has no idea
+which agency a row came from beyond the `source` field it prints. A
+provider parses its own source and nothing more; it never decides whether
+an event matters.
+
+## Tests
+
+```bash
+.venv/bin/pytest            # offline; uses saved fixtures
+.venv/bin/pytest -m live    # also hits the real endpoints
+```
+
+The fixtures in `tests/fixtures/` are real captured responses from each
+agency, so a change to a published format shows up as a failing parse
+here instead of an empty dashboard on Sunday.
+
+## Notifications
+
+Off by default. Enable in YAML, put the credentials in `.env`:
+
+```yaml
+notifications:
+  enabled: true
+  provider: "discord"   # or "email"
+```
+
+A notification failure is logged and never fails the refresh.
+
+## Not in scope
+
+No LLM-generated dates, no trading, no sentiment, no recommendations.
+An AI layer may summarize the collected report, but every factual field —
+dates, values, sources — comes from structured provider data.

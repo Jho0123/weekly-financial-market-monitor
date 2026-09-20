@@ -1,0 +1,215 @@
+app:
+  name: "Weekly Financial Market Monitor"
+  timezone: "America/Toronto"
+
+schedule:
+  enabled: true
+  day_of_week: "sunday"
+  time: "10:00"
+
+macro:
+  enabled: true
+
+  # Macro window: the Monday..Sunday week that follows the run.
+  # Set to 0 to use the calendar week; any other value shows
+  # "today .. today + days_ahead" instead.
+  days_ahead: 7
+
+  country:
+    - "United States"
+
+  minimum_importance: 3
+
+  # Which official sources to poll. Each one fails independently.
+  providers:
+    bls: true
+    bea: true
+    federal_reserve: true
+    census: true
+
+  # Aliases are matched against the release title the agency actually
+  # publishes. Matching is exact (after lowercasing and collapsing
+  # punctuation), and also retries with the trailing reference period
+  # and any parenthetical removed -- so "Gross Domestic Product, 2nd
+  # Quarter 2026 (Second Estimate)" matches the alias
+  # "Gross Domestic Product".
+  events:
+
+    CPI:
+      enabled: true
+      importance: 5
+      aliases:
+        - "Consumer Price Index"
+
+    # No agency publishes a standalone core release: core CPI ships
+    # inside the CPI report. Kept here so the importance is on record;
+    # it will not produce its own calendar row.
+    Core CPI:
+      enabled: true
+      importance: 5
+
+    NFP:
+      enabled: true
+      importance: 5
+      aliases:
+        - "Nonfarm Payrolls"
+        - "Non-Farm Payrolls"
+        - "Employment Situation"
+
+    # Also released inside the Employment Situation report.
+    Unemployment Rate:
+      enabled: true
+      importance: 5
+
+    FOMC Rate Decision:
+      enabled: true
+      importance: 5
+      aliases:
+        - "Federal Reserve Interest Rate Decision"
+
+    FOMC Statement:
+      enabled: true
+      importance: 5
+
+    FOMC Minutes:
+      enabled: true
+      importance: 4
+
+    PCE:
+      enabled: true
+      importance: 5
+      aliases:
+        - "Personal Consumption Expenditures"
+        # The BEA release that carries PCE.
+        - "Personal Income and Outlays"
+
+    # Released inside Personal Income and Outlays.
+    Core PCE:
+      enabled: true
+      importance: 5
+      aliases:
+        - "Core Personal Consumption Expenditures"
+
+    PPI:
+      enabled: true
+      importance: 4
+      aliases:
+        - "Producer Price Index"
+
+    # Released inside the PPI report.
+    Core PPI:
+      enabled: true
+      importance: 4
+
+    GDP:
+      enabled: true
+      importance: 4
+      aliases:
+        - "Gross Domestic Product"
+        # BEA pairs one estimate each quarter with corporate profits.
+        # The "(Second Estimate)" part is stripped before matching.
+        - "GDP and Corporate Profits"
+
+    Retail Sales:
+      enabled: true
+      importance: 4
+      aliases:
+        - "Advance Monthly Sales for Retail and Food Services"
+
+    Durable Goods Orders:
+      enabled: true
+      importance: 3
+      aliases:
+        - "Advance Report on Durable Goods--Manufacturers' Shipments, Inventories, and Orders"
+
+    Housing Starts:
+      enabled: true
+      importance: 3
+      aliases:
+        - "New Residential Construction (Building Permits, Housing Starts, and Housing Completions)"
+        - "New Residential Construction"
+
+    JOLTS:
+      enabled: true
+      importance: 4
+      aliases:
+        - "Job Openings and Labor Turnover Survey"
+
+    Employment Cost Index:
+      enabled: true
+      importance: 3
+
+    # ISM is a private trade association and the Conference Board and
+    # University of Michigan surveys are commercial products. None of
+    # them publish a free machine-readable calendar, so no V1 provider
+    # supplies these. They stay configured so that adding a provider
+    # later needs no code change here.
+    ISM Manufacturing PMI:
+      enabled: true
+      importance: 4
+
+    ISM Services PMI:
+      enabled: true
+      importance: 4
+
+    Consumer Confidence:
+      enabled: true
+      importance: 3
+
+    University of Michigan Sentiment:
+      enabled: true
+      importance: 3
+
+    # Published weekly by the Department of Labor, not by BLS.
+    Initial Jobless Claims:
+      enabled: true
+      importance: 3
+
+earnings:
+  enabled: true
+  provider: "alphavantage"
+
+  symbols:
+    - "NVDA"
+    - "MU"
+    - "AMD"
+    - "MSFT"
+
+  lookahead_days: 30
+
+dashboard:
+  type: "streamlit"
+  title: "Weekly Financial Market Monitor"
+
+  sections:
+    macro_events: true
+    earnings: true
+    warnings: true
+    data_status: true
+    tradingview_widget: true
+
+storage:
+  type: "sqlite"
+  path: "./data/market_monitor.db"
+
+cache:
+  enabled: true
+  ttl_minutes: 60
+
+network:
+  timeout_seconds: 15
+  retries: 3
+  backoff_seconds: 2
+
+notifications:
+  enabled: false
+  provider: "discord"
+  weekly_summary: true
+  errors: true
+
+output:
+  json_path: "./output/current_report.json"
+
+logging:
+  level: "INFO"
+  file: "./logs/market_monitor.log"

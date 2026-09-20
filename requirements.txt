@@ -1,0 +1,11 @@
+apscheduler
+beautifulsoup4
+httpx
+pydantic>=2
+pydantic-settings
+pyyaml
+python-dotenv
+sqlalchemy>=2
+streamlit
+pandas
+pytest

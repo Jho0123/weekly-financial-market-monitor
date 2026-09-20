@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "market-monitor"
+version = "1.0.0"
+description = "Weekly financial market monitor: macro release calendar + earnings watchlist from free official sources"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "apscheduler",
+    "beautifulsoup4",
+    "httpx",
+    "pydantic>=2",
+    "pydantic-settings",
+    "pyyaml",
+    "python-dotenv",
+    "sqlalchemy>=2",
+    "streamlit",
+    "pandas",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+market-monitor = "market_monitor.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "live: tests that hit live public data sources (deselected by default)",
+]
+addopts = "-m 'not live'"

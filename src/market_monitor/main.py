@@ -14,6 +14,7 @@ from .notifications.base import send_safely
 from .notifications.discord import DiscordNotifier
 from .notifications.email import EmailNotifier
 from .providers.earnings.alphavantage import AlphaVantageEarningsProvider
+from .providers.earnings.earningsapi import EarningsApiProvider
 from .providers.macro.bea import BEAProvider
 from .providers.macro.bls import BLSProvider
 from .providers.macro.census import CensusProvider
@@ -36,6 +37,7 @@ MACRO_PROVIDER_CLASSES = {
 }
 
 EARNINGS_PROVIDER_CLASSES = {
+    "earningsapi": EarningsApiProvider,
     "alphavantage": AlphaVantageEarningsProvider,
 }
 

@@ -3,6 +3,7 @@
 import logging
 import os
 from typing import Optional
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 
@@ -12,7 +13,44 @@ logger = logging.getLogger(__name__)
 
 RETRYABLE = (httpx.HTTPError, httpx.StreamError)
 
+# 4xx statuses that a retry could plausibly clear. Everything else in the
+# 4xx range is a decision about the request itself -- a bad key, a plan
+# that lacks the data, a wrong path -- and retrying it three times with
+# backoff only delays the fallback and fills the log with noise.
+RETRYABLE_CLIENT_STATUSES = frozenset({408, 425, 429})
+
+
+class PermanentHttpError(Exception):
+    """A client error no retry will fix. Deliberately not in RETRYABLE."""
+
+    def __init__(self, message: str, status_code: int, body: str = ""):
+        super().__init__(message)
+        self.status_code = status_code
+        self.body = body
+
+# Query parameters whose values must never reach a log file or a warning
+# shown on the dashboard (spec section 56).
+SECRET_PARAMS = frozenset({"apikey", "api_key", "key", "token", "access_token"})
+
 _WARNED_NO_CONTACT = False
+
+
+def redact(url: str) -> str:
+    """Strip secret query parameters from a URL before it is logged.
+
+    Provider failures surface as warnings on the dashboard and in the
+    log file, and several data APIs take the key as a query parameter,
+    so an un-redacted URL would publish it on the first timeout.
+    """
+    parts = urlsplit(url)
+    if not parts.query:
+        return url
+
+    cleaned = [
+        (name, "REDACTED" if name.lower() in SECRET_PARAMS else value)
+        for name, value in parse_qsl(parts.query, keep_blank_values=True)
+    ]
+    return urlunsplit(parts._replace(query=urlencode(cleaned)))
 
 
 def user_agent() -> str:
@@ -70,10 +108,27 @@ class HttpFetcher:
             )
         return self._client
 
-    def get_text(self, url: str) -> str:
+    @staticmethod
+    def _check(response, url: str) -> None:
+        """Raise a permanent error for client mistakes, else let retry run."""
+        status = response.status_code
+        if 400 <= status < 500 and status not in RETRYABLE_CLIENT_STATUSES:
+            body = (response.text or "").strip()
+            raise PermanentHttpError(
+                "HTTP {} for {}{}".format(
+                    status,
+                    redact(url),
+                    ": {}".format(body[:300]) if body else "",
+                ),
+                status_code=status,
+                body=body,
+            )
+        response.raise_for_status()
+
+    def get_text(self, url: str, headers: Optional[dict] = None) -> str:
         def attempt() -> str:
-            response = self.client.get(url)
-            response.raise_for_status()
+            response = self.client.get(url, headers=headers or None)
+            self._check(response, url)
             return response.text
 
         return retry_call(
@@ -81,7 +136,21 @@ class HttpFetcher:
             attempts=self.retries,
             backoff_seconds=self.backoff_seconds,
             exceptions=RETRYABLE,
-            description="GET {}".format(url),
+            description="GET {}".format(redact(url)),
+        )
+
+    def get_json(self, url: str, headers: Optional[dict] = None):
+        def attempt():
+            response = self.client.get(url, headers=headers or None)
+            self._check(response, url)
+            return response.json()
+
+        return retry_call(
+            attempt,
+            attempts=self.retries,
+            backoff_seconds=self.backoff_seconds,
+            exceptions=RETRYABLE + (ValueError,),
+            description="GET {}".format(redact(url)),
         )
 
     def close(self) -> None:

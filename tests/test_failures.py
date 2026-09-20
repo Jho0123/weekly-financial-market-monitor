@@ -66,11 +66,54 @@ def test_retry_succeeds_on_a_later_attempt():
     assert len(calls) == 3
 
 
+def test_client_errors_are_not_retried():
+    """Retrying a 403 cannot help; it just delays the cache fallback."""
+    from market_monitor.utils.http import PermanentHttpError
+
+    calls = []
+
+    class ForbiddenClient:
+        def get(self, url, headers=None):
+            calls.append(url)
+
+            class Response:
+                status_code = 403
+                text = '{"error":"You are not entitled to this data."}'
+
+            return Response()
+
+    fetcher = HttpFetcher(retries=3, backoff_seconds=0, client=ForbiddenClient())
+
+    with pytest.raises(PermanentHttpError) as caught:
+        fetcher.get_text("https://api.example.com/data?apiKey=secret")
+
+    assert len(calls) == 1  # one attempt, not three
+    assert caught.value.status_code == 403
+    # The key must not survive into the message that reaches the log.
+    assert "secret" not in str(caught.value)
+    assert "REDACTED" in str(caught.value)
+
+
+@pytest.mark.parametrize("status", [408, 429])
+def test_transient_client_errors_are_still_retried(status):
+    calls = []
+
+    class FlakyClient:
+        def get(self, url, headers=None):
+            calls.append(url)
+            raise httpx.ReadTimeout("simulated {}".format(status))
+
+    fetcher = HttpFetcher(retries=3, backoff_seconds=0, client=FlakyClient())
+    with pytest.raises(RetryError):
+        fetcher.get_text("https://api.example.com/data")
+    assert len(calls) == 3
+
+
 def test_fetcher_retries_then_raises(monkeypatch):
     calls = []
 
     class FailingClient:
-        def get(self, url):
+        def get(self, url, headers=None):
             calls.append(url)
             raise httpx.ReadTimeout("timed out")
 

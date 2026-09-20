@@ -22,7 +22,7 @@ All free, all official, no scraping of commercial sites:
 | BEA | official iCalendar feed | GDP, Personal Income and Outlays (PCE) |
 | Federal Reserve | FOMC calendar page | Rate decisions, statements, minutes |
 | Census | economic indicator calendar | Retail Sales, Durable Goods, Housing Starts |
-| Alpha Vantage | earnings calendar CSV | Earnings dates for your watchlist |
+| EarningsAPI.com | `/v1/earnings` REST API | Earnings dates for your watchlist |
 
 BLS and BEA publish real calendar feeds, so those two need no HTML
 parsing at all. The Fed and Census pages are parsed, but against stable
@@ -52,12 +52,14 @@ Then edit `.env`:
 # a contact address.
 CONTACT_EMAIL=you@example.com
 
-# Optional. The literal "demo" works for the earnings calendar; a free
-# key from alphavantage.co/support/#api-key raises your daily limit.
-ALPHA_VANTAGE_API_KEY=
+# Required for earnings. Get a key at https://www.earningsapi.com/
+EARNINGS_API_KEY=your_key_here
 ```
 
-`.env` holds every secret. No API key belongs in the YAML.
+`.env` holds every secret; no API key belongs in the YAML. EarningsAPI
+takes its key as a query parameter, so it necessarily appears in the
+request URL — every URL is passed through a redactor before it reaches a
+log line or a dashboard warning.
 
 ## Use
 
@@ -174,10 +176,41 @@ dashboard, and `refresh_runs` in SQLite keeps a log of every run.
 
 ## Earnings dates are projections
 
-Alpha Vantage publishes no confirmation flag, so this app never marks a
-date `confirmed`. A row that names a session is `expected`; one without
-is `estimated`. The dashboard says how many are unconfirmed. Treat them
-as dates that can move.
+EarningsAPI publishes no confirmation flag, so this app never marks a
+date **Confirmed**. A row whose reporting time is known is **Expected**;
+one reported as `time-not-supplied` is **Estimated**. The dashboard
+counts how many are unconfirmed. Treat them as dates that can move.
+
+The session column comes from the `time` field (`time-pre-market`,
+`time-after-hours`), with `BMO` / `AMC` handled as well.
+
+### Request cost
+
+`/v1/earnings` is queried **once per symbol**, and it returns that
+company's history *and* its upcoming dates in one response. A four-name
+watchlist therefore costs four requests per refresh.
+
+The alternative — the date-based `/v1/calendar/earnings` endpoint —
+takes a single date per call, so a 30-day lookahead would cost 30
+requests. On the free plan (60/min, 100/day, 1,000/month) the per-symbol
+route is the one that fits. A long watchlist still costs one request per
+name, and the provider logs a warning if yours gets large enough to
+matter.
+
+### Switching earnings provider
+
+The provider sits behind an interface, so swapping it is a config change:
+
+```yaml
+earnings:
+  provider: "earningsapi"    # or "alphavantage"
+```
+
+The Alpha Vantage adapter is still included and still works. It takes the
+opposite approach — one request that downloads the entire market's
+calendar, filtered locally — which makes it a useful fallback when you
+are out of EarningsAPI quota. It needs `ALPHA_VANTAGE_API_KEY`, though
+the literal value `demo` works for the full-calendar download.
 
 ## Output
 
@@ -196,7 +229,7 @@ src/market_monitor/
   scheduler.py         APScheduler cron job
   models/              MacroEvent, EarningsEvent, WeeklyReport, ProviderStatus
   providers/macro/     bls, bea, federal_reserve, census, composite
-  providers/earnings/  alphavantage
+  providers/earnings/  earningsapi (default), alphavantage
   services/            normalizer, macro, earnings, report
   repository/          SQLite persistence
   dashboard/           Streamlit app and sections

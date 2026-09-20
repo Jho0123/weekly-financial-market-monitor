@@ -167,7 +167,11 @@ macro:
 
 earnings:
   enabled: true
-  provider: "alphavantage"
+  # "earningsapi" (default) or "alphavantage".
+  #
+  # earningsapi spends one request per symbol, so keep the watchlist
+  # modest on the free plan (100 requests/day).
+  provider: "earningsapi"
 
   symbols:
     - "NVDA"

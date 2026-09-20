@@ -118,7 +118,7 @@ class MacroConfig(_Base):
 
 class EarningsConfig(_Base):
     enabled: bool = True
-    provider: str = "alphavantage"
+    provider: str = "earningsapi"
     symbols: List[str] = Field(default_factory=list)
     lookahead_days: int = Field(default=30, gt=0)
 

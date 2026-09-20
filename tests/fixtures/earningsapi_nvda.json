@@ -1,0 +1,42 @@
+[
+  {
+    "date": "2026-11-18",
+    "symbol": "NVDA",
+    "name": "NVIDIA Corporation",
+    "time": "time-after-hours",
+    "epsEstimate": 1.92,
+    "eps": null,
+    "revenue": null,
+    "revenueEstimate": 64200000000
+  },
+  {
+    "date": "2026-10-05",
+    "symbol": "NVDA",
+    "name": "NVIDIA Corporation",
+    "time": "time-not-supplied",
+    "epsEstimate": 1.77,
+    "eps": null,
+    "revenue": null,
+    "revenueEstimate": 59800000000
+  },
+  {
+    "date": "2026-08-19",
+    "symbol": "NVDA",
+    "name": "NVIDIA Corporation",
+    "time": "time-after-hours",
+    "epsEstimate": 1.55,
+    "eps": 1.61,
+    "revenue": 54200000000,
+    "revenueEstimate": 53100000000
+  },
+  {
+    "date": "2026-05-20",
+    "symbol": "NVDA",
+    "name": "NVIDIA Corporation",
+    "time": "time-pre-market",
+    "epsEstimate": 1.31,
+    "eps": 1.4,
+    "revenue": 48900000000,
+    "revenueEstimate": 47500000000
+  }
+]

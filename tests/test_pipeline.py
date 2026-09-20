@@ -160,7 +160,31 @@ def test_live_sources_are_reachable_and_parse():
 
 
 @pytest.mark.live
-def test_live_earnings_calendar_parses():
+def test_live_earningsapi_parses():
+    """Needs EARNINGS_API_KEY. Run with `pytest -m live`."""
+    import os
+    from datetime import timedelta
+
+    from market_monitor.providers.earnings.earningsapi import EarningsApiProvider
+
+    if not os.environ.get("EARNINGS_API_KEY"):
+        pytest.skip("EARNINGS_API_KEY is not set")
+
+    # Two symbols only: the free plan allows 100 requests a day.
+    symbols = ["NVDA", "MU"]
+    events = EarningsApiProvider().get_earnings(
+        symbols=symbols,
+        start=date.today(),
+        end=date.today() + timedelta(days=120),
+    )
+    assert isinstance(events, list)
+    for event in events:
+        assert event.symbol in set(symbols)
+        assert event.source == "EarningsAPI"
+
+
+@pytest.mark.live
+def test_live_alphavantage_calendar_still_parses():
     from market_monitor.providers.earnings.alphavantage import (
         AlphaVantageEarningsProvider,
     )

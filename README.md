@@ -73,12 +73,71 @@ python -m market_monitor dashboard          # launch Streamlit
 python -m market_monitor schedule           # run the weekly scheduler
 ```
 
-`schedule --run-now` does one refresh immediately, then waits for the
-next scheduled slot. `refresh` exits non-zero when the report carries
-warnings, so cron and CI can notice a degraded run.
+If the virtualenv is not activated, prefix with `.venv/bin/python`
+instead of `python`.
 
-Everything works without the scheduler; the scheduler just calls
-`refresh` on a cron trigger built from the YAML.
+`refresh` exits non-zero when the report carries warnings, so cron and CI
+can notice a degraded run.
+
+### Dashboard
+
+```bash
+python -m market_monitor dashboard                  # opens a browser at :8501
+python -m market_monitor dashboard --port 9000      # different port
+python -m market_monitor dashboard --no-browser     # headless, e.g. on a Pi
+```
+
+It reads the stored report, so it loads instantly and works offline.
+There is a **Refresh now** button in the sidebar — that alone is enough
+to use the app, no scheduler required. Stop it with Ctrl+C.
+
+### Scheduler
+
+```bash
+python -m market_monitor schedule             # wait for the next slot
+python -m market_monitor schedule --run-now   # refresh now, then wait
+```
+
+This blocks in the foreground: it sits there until the scheduled time,
+runs a refresh, and goes back to waiting. **Closing the terminal stops
+it** — there is no background daemon. If the machine is asleep at the
+scheduled time, a one-hour grace window means it still fires on wake;
+miss it by longer and that run is skipped.
+
+For something that survives reboots and sleep, use the OS scheduler
+(`launchd` on macOS, `cron` on Linux) to run
+`python -m market_monitor refresh` directly, rather than keeping a Python
+process alive all week.
+
+### Changing when it runs
+
+Edit `config/config.yaml` — no Python changes, and nothing to restart
+except the scheduler process itself:
+
+```yaml
+app:
+  timezone: "America/Toronto"   # DST is handled for you
+
+schedule:
+  enabled: true
+  day_of_week: "sunday"         # monday .. sunday
+  time: "10:00"                 # 24-hour HH:MM
+```
+
+| Setting | Next run (from Sun Sep 20, 19:56) |
+| --- | --- |
+| `sunday` / `10:00` | Sun Sep 27, 10:00 EDT |
+| `sunday` / `07:30` | Sun Sep 27, 07:30 EDT |
+| `monday` / `06:00` | Mon Sep 21, 06:00 EDT |
+| `friday` / `16:30` (New York) | Fri Sep 25, 16:30 EDT |
+
+`validate-config` checks the values before you rely on them: `"10am"`,
+`"25:00"` and `"someday"` are all rejected with an explanation rather
+than failing silently at 10am on a Sunday.
+
+Setting `enabled: false` makes `schedule` exit immediately instead of
+blocking, which is what you want if you drive refreshes from `launchd`
+or the dashboard button.
 
 ## Configuration
 

@@ -94,19 +94,29 @@ def test_client_errors_are_not_retried():
     assert "REDACTED" in str(caught.value)
 
 
-@pytest.mark.parametrize("status", [408, 429])
-def test_transient_client_errors_are_still_retried(status):
+@pytest.mark.parametrize("status", [408, 429, 500, 503])
+def test_transient_errors_are_retried_without_leaking_the_key(status):
+    """Rate limits and server errors are worth retrying; keys are not logged."""
     calls = []
+    url = "https://api.example.com/data?symbol=X&apikey=s3cr3t"
 
     class FlakyClient:
-        def get(self, url, headers=None):
-            calls.append(url)
-            raise httpx.ReadTimeout("simulated {}".format(status))
+        def get(self, request_url, headers=None):
+            calls.append(request_url)
+            return httpx.Response(
+                status,
+                request=httpx.Request("GET", request_url),
+                text="rate limited",
+            )
 
     fetcher = HttpFetcher(retries=3, backoff_seconds=0, client=FlakyClient())
-    with pytest.raises(RetryError):
-        fetcher.get_text("https://api.example.com/data")
+    with pytest.raises(RetryError) as caught:
+        fetcher.get_text(url)
+
     assert len(calls) == 3
+    # httpx builds its own message from the full URL; it must not survive.
+    assert "s3cr3t" not in str(caught.value)
+    assert "REDACTED" in str(caught.value)
 
 
 def test_fetcher_retries_then_raises(monkeypatch):

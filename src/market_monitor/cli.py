@@ -8,6 +8,8 @@ import argparse
 import logging
 import subprocess
 import sys
+import threading
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -160,12 +162,35 @@ def cmd_summary(args) -> int:
 def cmd_dashboard(args) -> int:
     config = _bootstrap(args)
     app_path = Path(__file__).parent / "dashboard" / "app.py"
+    url = "http://localhost:{}".format(args.port)
 
-    command = [sys.executable, "-m", "streamlit", "run", str(app_path)]
+    command = [
+        sys.executable,
+        "-m",
+        "streamlit",
+        "run",
+        str(app_path),
+        "--server.port",
+        str(args.port),
+        # Without this, Streamlit's first run stops at an interactive
+        # "Email:" prompt and never starts serving. It also suppresses
+        # the automatic browser launch, so that is done below instead.
+        "--server.headless",
+        "true",
+        "--browser.gatherUsageStats",
+        "false",
+    ]
     if args.config:
         command += ["--", "--config", args.config]
 
     logger.info("Launching Streamlit dashboard: %s", config.dashboard.title)
+    print("{} -> {}".format(config.dashboard.title, url))
+    print("Press Ctrl+C to stop.")
+
+    if not args.no_browser:
+        # Give the server a moment to bind before the browser asks for it.
+        threading.Timer(2.5, lambda: webbrowser.open(url)).start()
+
     return subprocess.call(command)
 
 
@@ -212,9 +237,18 @@ def build_parser() -> argparse.ArgumentParser:
         "summary", help="Print the text summary of the last stored report"
     ).set_defaults(func=cmd_summary)
 
-    subparsers.add_parser(
+    dashboard_parser = subparsers.add_parser(
         "dashboard", help="Launch the Streamlit dashboard"
-    ).set_defaults(func=cmd_dashboard)
+    )
+    dashboard_parser.add_argument(
+        "--port", type=int, default=8501, help="Port to serve on (default 8501)"
+    )
+    dashboard_parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="Do not open a browser window automatically",
+    )
+    dashboard_parser.set_defaults(func=cmd_dashboard)
 
     schedule_parser = subparsers.add_parser(
         "schedule", help="Run the scheduler in the foreground"

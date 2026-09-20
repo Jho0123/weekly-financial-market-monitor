@@ -110,20 +110,31 @@ class HttpFetcher:
 
     @staticmethod
     def _check(response, url: str) -> None:
-        """Raise a permanent error for client mistakes, else let retry run."""
+        """Raise on an error status, always with a redacted URL.
+
+        ``httpx.raise_for_status`` builds its own message containing the
+        full request URL. For an API that takes its key as a query
+        parameter that message would carry the key into the log file and
+        into the warning shown on the dashboard, so the error is raised
+        here instead, with the URL redacted.
+        """
         status = response.status_code
+        if status < 400:
+            return
+
+        safe_url = redact(url)
+        body = (response.text or "").strip()
+        detail = "HTTP {} for {}{}".format(
+            status, safe_url, ": {}".format(body[:300]) if body else ""
+        )
+
         if 400 <= status < 500 and status not in RETRYABLE_CLIENT_STATUSES:
-            body = (response.text or "").strip()
-            raise PermanentHttpError(
-                "HTTP {} for {}{}".format(
-                    status,
-                    redact(url),
-                    ": {}".format(body[:300]) if body else "",
-                ),
-                status_code=status,
-                body=body,
-            )
-        response.raise_for_status()
+            raise PermanentHttpError(detail, status_code=status, body=body)
+
+        # Retryable: must stay an httpx error so RETRYABLE catches it.
+        raise httpx.HTTPStatusError(
+            detail, request=response.request, response=response
+        )
 
     def get_text(self, url: str, headers: Optional[dict] = None) -> str:
         def attempt() -> str:

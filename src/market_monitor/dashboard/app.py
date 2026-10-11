@@ -28,7 +28,7 @@ from market_monitor.models.provider_status import (  # noqa: E402
 )
 from market_monitor.repository.sqlite_repository import SqliteRepository  # noqa: E402
 from market_monitor.services.report_service import summarize  # noqa: E402
-from market_monitor.utils.dates import format_local  # noqa: E402
+from market_monitor.utils.dates import format_local, now_in  # noqa: E402
 
 STATUS_ICONS = {
     STATUS_OK: "🟢",
@@ -74,6 +74,41 @@ def render_data_status(report, tz) -> None:
     )
 
 
+def refresh_if_stale(config, report):
+    """Rebuild a report generated on an earlier day.
+
+    Both windows are anchored to the day a report is generated, so an old
+    report shows an old week. Only one attempt is made per session, so a
+    failing source does not refetch on every widget interaction.
+    """
+    tz = config.app.tzinfo
+    if report is None:
+        return report
+    generated = report.generated_at.astimezone(tz)
+    if generated.date() >= now_in(tz).date():
+        return report
+    if st.session_state.get("auto_refresh_attempted"):
+        return report
+    st.session_state["auto_refresh_attempted"] = True
+
+    from market_monitor.main import refresh
+
+    with st.spinner(
+        "Stored report is from {} -- fetching current calendars...".format(
+            format_local(generated)
+        )
+    ):
+        try:
+            return refresh(config, notify=False)
+        except Exception as exc:  # noqa: BLE001
+            st.error(
+                "Automatic refresh failed: {}. Showing the report from {}.".format(
+                    exc, format_local(generated)
+                )
+            )
+            return report
+
+
 def render_warnings(report) -> None:
     if not report.warnings:
         st.success("All data refreshed successfully.")
@@ -103,7 +138,7 @@ def main() -> None:
     st.title(config.dashboard.title)
 
     repository = SqliteRepository(config.storage.path)
-    report = repository.load_latest_report()
+    report = refresh_if_stale(config, repository.load_latest_report())
 
     with st.sidebar:
         st.header("Refresh")

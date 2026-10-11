@@ -1,7 +1,7 @@
 # Weekly Financial Market Monitor
 
 A config-driven weekly market calendar. Every Sunday at 10:00 it collects
-the macro releases scheduled for the coming week and the earnings dates
+the macro releases scheduled for the next seven days and the earnings dates
 for a watchlist, and puts both on one dashboard.
 
 The split it is built around:
@@ -153,7 +153,7 @@ app:
   timezone: "America/Toronto"
 
 macro:
-  days_ahead: 7             # 7 = the Mon..Sun week ahead
+  days_ahead: 7             # today .. today + 7, from when it runs
   minimum_importance: 3     # hide anything below this
   providers:                # turn individual sources off
     census: true

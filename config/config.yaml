@@ -10,9 +10,8 @@ schedule:
 macro:
   enabled: true
 
-  # Macro window: the Monday..Sunday week that follows the run.
-  # Set to 0 to use the calendar week; any other value shows
-  # "today .. today + days_ahead" instead.
+  # Macro window: "today .. today + days_ahead", counted from the
+  # moment the run happens. Set to 0 to use the current Mon..Sun week.
   days_ahead: 7
 
   country:
@@ -178,6 +177,9 @@ earnings:
     - "MU"
     - "AMD"
     - "MSFT"
+    - "DELL"
+    - "AMD"
+    - "TSLA"
 
   lookahead_days: 30
 

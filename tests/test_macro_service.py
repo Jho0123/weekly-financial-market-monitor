@@ -69,9 +69,9 @@ def test_events_outside_the_window_are_excluded(config):
     events, _, _ = run(
         config,
         [
-            make_macro_event("Consumer Price Index", at(20)),  # before Monday
+            make_macro_event("Consumer Price Index", at(19)),  # before the run
             make_macro_event("Consumer Price Index", at(22)),  # inside
-            make_macro_event("Consumer Price Index", at(28)),  # after Sunday
+            make_macro_event("Consumer Price Index", at(28)),  # after run + 7
         ],
     )
     assert [e.datetime_local.date().day for e in events] == [22]

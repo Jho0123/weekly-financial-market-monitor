@@ -30,25 +30,15 @@ def to_utc(moment: datetime) -> datetime:
 
 
 def week_window(reference: datetime, days_ahead: int = 7) -> Tuple[date, date]:
-    """The window the weekly report covers.
+    """The window the macro calendar covers.
 
-    With the default ``days_ahead`` of 7 this is the Monday..Sunday week
-    *following* the reference moment, so a Sunday 10:00 run reports on the
-    week that starts the next day. A run on any other weekday reports on
-    the next upcoming week the same way.
+    A rolling ``today .. today + days_ahead`` window, both ends inclusive,
+    measured from the moment the run happens. With the default of 7 a run
+    on Saturday Oct 10 covers Oct 10 through Oct 17.
 
-    Any other positive ``days_ahead`` switches to a rolling
-    ``today .. today + days_ahead`` window, which is what a user who sets
-    ``days_ahead: 14`` is asking for.
+    ``days_ahead`` of 0 means the current Monday..Sunday calendar week.
     """
     today = reference.date()
-
-    if days_ahead == 7:
-        # weekday(): Monday is 0. Always land on the *next* Monday, so a
-        # Monday run reports the week ahead rather than the current one.
-        days_until_monday = 7 - today.weekday()
-        start = today + timedelta(days=days_until_monday)
-        return start, start + timedelta(days=6)
 
     if days_ahead == 0:
         start = today - timedelta(days=today.weekday())

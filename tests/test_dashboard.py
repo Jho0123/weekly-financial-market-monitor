@@ -68,7 +68,8 @@ def sample_report(**overrides):
     ).model_copy(update={"canonical_name": "CPI", "importance": 5})
 
     defaults = dict(
-        generated_at=datetime(2026, 9, 20, 10, 0, tzinfo=TORONTO),
+        # Today, so the dashboard does not treat it as stale and refetch.
+        generated_at=datetime.now(TORONTO),
         macro_start=date(2026, 9, 21),
         macro_end=date(2026, 9, 27),
         earnings_start=date(2026, 9, 20),
@@ -110,6 +111,41 @@ def test_dashboard_renders_macro_and_earnings_together(app_env):
 
     assert app.title[0].value == "Test Monitor"
     assert any("All data refreshed successfully." in s.value for s in app.success)
+
+
+@pytest.fixture
+def refresh_calls(app_env, monkeypatch):
+    """Replace the network pipeline with one that stores a fresh report."""
+    import market_monitor.main
+
+    calls = []
+
+    def fake_refresh(config, notify=True):
+        calls.append(notify)
+        report = sample_report(
+            macro_start=date(2026, 10, 10), macro_end=date(2026, 10, 17)
+        )
+        app_env.save_report(report)
+        return report
+
+    monkeypatch.setattr(market_monitor.main, "refresh", fake_refresh)
+    return calls
+
+
+def test_dashboard_refreshes_a_report_from_an_earlier_day(app_env, refresh_calls):
+    app_env.save_report(
+        sample_report(generated_at=datetime(2026, 9, 20, 10, 0, tzinfo=TORONTO))
+    )
+    app = run_app()
+
+    assert refresh_calls == [False]  # once, without notifications
+    assert any("Saturday Oct 10, 2026" in c.value for c in app.caption)
+
+
+def test_dashboard_does_not_refetch_a_report_from_today(app_env, refresh_calls):
+    app_env.save_report(sample_report())
+    run_app()
+    assert refresh_calls == []
 
 
 def test_dashboard_shows_warnings_for_stale_data(app_env):
